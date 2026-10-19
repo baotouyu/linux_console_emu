@@ -51,24 +51,20 @@ rk3576_purple_pi_oh2_linux_sdk/prebuilts/gcc/linux-x86/aarch64/gcc-arm-10.3-2021
 - sysroot 里没有 `libSDL`。模拟器还要单独准备 SDL 头文件和库，这一步还没做。
 - 本机没有 `qemu-aarch64`，hello 还没有在 RK3576 板上跑过。
 
-同一天用 CMake 又编过一次，产物同样是 `ARM aarch64`。命令是：
-
-```
-cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-aarch64-linux.cmake
-cmake --build build
-```
+同一天用 CMake 又编过一次，产物同样是 `ARM aarch64`。入口是 `./build.sh`，它会带上默认的 `aarch64-none-linux-gnu` 工具链并调用 CMake。换工具链时设置 `TOOLCHAIN_ROOT`。`./build.sh clean` 删除 `build/`，`./build.sh help` 打印用法。
 
 可执行文件在 `build/apps/hello/hello`。`build/` 不进仓库。
 
 ## 工程路径
 
 ```
+build.sh
 CMakeLists.txt
 cmake/toolchain-aarch64-linux.cmake
 apps/hello/
 ```
 
-顶层 `CMakeLists.txt` 只负责把 `apps/` 里的程序加进来。工具链文件默认指向上一节那套 `aarch64-none-linux-gnu-gcc`，换机器时用 `-DTOOLCHAIN_ROOT=` 改。
+顶层 `CMakeLists.txt` 只负责把 `apps/` 里的程序加进来。`./build.sh` 把工具链路径传给 `cmake/toolchain-aarch64-linux.cmake`。默认路径是上一节那套 `aarch64-none-linux-gnu-gcc`，换机器时设置环境变量 `TOOLCHAIN_ROOT`。
 
 以后每个模拟器放在 `apps/<目录>`，并在顶层 `CMakeLists.txt` 里 `add_subdirectory`。`apps/hello` 只用来确认这条编译链路，不带 SDL。
 
