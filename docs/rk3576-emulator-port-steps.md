@@ -51,6 +51,27 @@ rk3576_purple_pi_oh2_linux_sdk/prebuilts/gcc/linux-x86/aarch64/gcc-arm-10.3-2021
 - sysroot 里没有 `libSDL`。模拟器还要单独准备 SDL 头文件和库，这一步还没做。
 - 本机没有 `qemu-aarch64`，hello 还没有在 RK3576 板上跑过。
 
+同一天用 CMake 又编过一次，产物同样是 `ARM aarch64`。命令是：
+
+```
+cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-aarch64-linux.cmake
+cmake --build build
+```
+
+可执行文件在 `build/apps/hello/hello`。`build/` 不进仓库。
+
+## 工程路径
+
+```
+CMakeLists.txt
+cmake/toolchain-aarch64-linux.cmake
+apps/hello/
+```
+
+顶层 `CMakeLists.txt` 只负责把 `apps/` 里的程序加进来。工具链文件默认指向上一节那套 `aarch64-none-linux-gnu-gcc`，换机器时用 `-DTOOLCHAIN_ROOT=` 改。
+
+以后每个模拟器放在 `apps/<目录>`，并在顶层 `CMakeLists.txt` 里 `add_subdirectory`。`apps/hello` 只用来确认这条编译链路，不带 SDL。
+
 后面每个模拟器都用这支 `aarch64-none-linux-gnu-gcc` 编。`file` 看到 `ARM aarch64` 才算编译这步通过。
 
 ## 这几步先不做
@@ -62,7 +83,7 @@ rk3576_purple_pi_oh2_linux_sdk/prebuilts/gcc/linux-x86/aarch64/gcc-arm-10.3-2021
 
 ## 每个模拟器都按这 6 步做
 
-1. 从 `miyoo_src/<目录>` 拷到本仓库同名目录。记下它现在的编译命令，以及写死的 `arm-linux-gcc`、`-march=armv5te`、`-mtune=arm926ej-s`、`/opt/miyoo`。
+1. 从 `miyoo_src/<目录>` 拷到本仓库 `apps/<目录>`。记下它现在的编译命令，以及写死的 `arm-linux-gcc`、`-march=armv5te`、`-mtune=arm926ej-s`、`/opt/miyoo`。
 2. 改成上一节的 `aarch64-none-linux-gnu-gcc`，去掉上面这些标志。源文件里如果打开 `/dev/miyoo_*` 或 `/dev/mem`，改成 SDL 的画面、键盘和音频。
 3. 在编译机上编过，确认生成的是 aarch64 程序（`file` 能看到 `ARM aarch64`）。
 4. 拷到 RK3576，用一份你自己的 ROM 启动到标题或第一个画面。BIOS 类模拟器同时放上它要求的 BIOS。
