@@ -22,7 +22,36 @@ RK3576 的系统库是 glibc。这些源码现在链的是 uClibc，所以 Miyoo
 
 建议运行时保持模拟器里的 SDL 1.2 调用，板上安装 `sdl12-compat`，由它接到系统现有的 SDL2 / 显示服务。这样第一批移植只改编译器和去掉 Miyoo 设备节点，不把每个模拟器改成 SDL2。
 
-编译在 RK3576 板上用系统自带的 `gcc` 做。板上还没有编译器时，再用 PC 上的 `aarch64-linux-gnu-gcc` 配这块板的 sysroot。两条路都不再使用 `/opt/miyoo/bin/arm-linux-gcc`。
+编译在 PC 上做，用 Purple Pi OH2 SDK 里的 aarch64 Linux 工具链，见下一节。不再使用 `/opt/miyoo/bin/arm-linux-gcc`。
+
+## 交叉编译器
+
+用这一套，三元组是 `aarch64-none-linux-gnu`：
+
+```
+rk3576_purple_pi_oh2_linux_sdk/prebuilts/gcc/linux-x86/aarch64/gcc-arm-10.3-2021.07-x86_64-aarch64-none-linux-gnu
+```
+
+本机绝对路径是 `/home/yuwei/samba/yuwei_work/chip_sdk/Rockship/RK3576/rk3576_purple_pi_oh2_linux_sdk/prebuilts/gcc/linux-x86/aarch64/gcc-arm-10.3-2021.07-x86_64-aarch64-none-linux-gnu`。编译器是 `bin/aarch64-none-linux-gnu-gcc`。
+
+同一目录下还有三套不参与模拟器编译：
+
+| 目录 | 用途 |
+|---|---|
+| `aarch64/arm-gnu-toolchain-13.2.Rel1-x86_64-aarch64-none-elf` | 裸机，没有 Linux libc |
+| `arm/gcc-arm-10.3-2021.07-x86_64-arm-none-linux-gnueabihf` | 32 位 ARM Linux，留到以后做 armhf |
+| `arm/gcc-arm-none-eabi-10-2020-q4-major-x86_64-linux` | 32 位裸机 |
+
+2026-03-07 在这台 x86_64 机器上验证过：
+
+- `aarch64-none-linux-gnu-gcc` 版本是 10.3.1（GNU Toolchain for the A-profile Architecture 10.3-2021.07）。
+- `-dumpmachine` 是 `aarch64-none-linux-gnu`。
+- 用它编译的 hello 是 `ELF 64-bit LSB executable, ARM aarch64`，动态链接器是 `/lib/ld-linux-aarch64.so.1`。
+- sysroot 里的 C 库是 glibc 2.33（`libc-2.33.so`）。
+- sysroot 里没有 `libSDL`。模拟器还要单独准备 SDL 头文件和库，这一步还没做。
+- 本机没有 `qemu-aarch64`，hello 还没有在 RK3576 板上跑过。
+
+后面每个模拟器都用这支 `aarch64-none-linux-gnu-gcc` 编。`file` 看到 `ARM aarch64` 才算编译这步通过。
 
 ## 这几步先不做
 
@@ -34,7 +63,7 @@ RK3576 的系统库是 glibc。这些源码现在链的是 uClibc，所以 Miyoo
 ## 每个模拟器都按这 6 步做
 
 1. 从 `miyoo_src/<目录>` 拷到本仓库同名目录。记下它现在的编译命令，以及写死的 `arm-linux-gcc`、`-march=armv5te`、`-mtune=arm926ej-s`、`/opt/miyoo`。
-2. 改成板上的 `gcc` 或 `aarch64-linux-gnu-gcc`，去掉上面这些标志。源文件里如果打开 `/dev/miyoo_*` 或 `/dev/mem`，改成 SDL 的画面、键盘和音频。
+2. 改成上一节的 `aarch64-none-linux-gnu-gcc`，去掉上面这些标志。源文件里如果打开 `/dev/miyoo_*` 或 `/dev/mem`，改成 SDL 的画面、键盘和音频。
 3. 在编译机上编过，确认生成的是 aarch64 程序（`file` 能看到 `ARM aarch64`）。
 4. 拷到 RK3576，用一份你自己的 ROM 启动到标题或第一个画面。BIOS 类模拟器同时放上它要求的 BIOS。
 5. 在文末的状态表写结果：通过、编译失败、或能开不能玩，并写上一句原因。
@@ -140,9 +169,12 @@ workdir=.
 | gpsp | 3 | 未开始 | |
 | pcsx_rearmed | 3 | 未开始 | |
 
-## 动手前要你点头的两件事
+## 已经定下的编译方式
 
-1. 第一批保持 SDL 1.2 源码，板上用 `sdl12-compat`。
-2. 优先在 RK3576 板上编译；板上没有编译器时，再改用 PC 交叉编译。
+在 PC 上用 SDK 里的 `aarch64-none-linux-gnu-gcc` 交叉编译。工具链本身已经验证，见「交叉编译器」。
 
-这两条可以改。改完再从 `sms` 开始做第 1 步。
+## 下一步之前还要定的一件事
+
+第一批保持 SDL 1.2 源码，板上用 `sdl12-compat`。这套 sysroot 里没有 SDL，所以 `sms` 之前要先决定 SDL 头文件和库从哪来：打进这个 sysroot，或者指向板上 rootfs 里的 SDL。
+
+这件事定了再从 `sms` 开始。
