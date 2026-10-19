@@ -42,7 +42,7 @@ rk3576_purple_pi_oh2_linux_sdk/prebuilts/gcc/linux-x86/aarch64/gcc-arm-10.3-2021
 | `arm/gcc-arm-10.3-2021.07-x86_64-arm-none-linux-gnueabihf` | 32 位 ARM Linux，留到以后做 armhf |
 | `arm/gcc-arm-none-eabi-10-2020-q4-major-x86_64-linux` | 32 位裸机 |
 
-2026-03-07 在这台 x86_64 机器上验证过：
+2026-10-19 在这台 x86_64 机器上验证过：
 
 - `aarch64-none-linux-gnu-gcc` 版本是 10.3.1（GNU Toolchain for the A-profile Architecture 10.3-2021.07）。
 - `-dumpmachine` 是 `aarch64-none-linux-gnu`。
