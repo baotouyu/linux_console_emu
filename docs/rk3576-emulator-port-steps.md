@@ -1,0 +1,148 @@
+# 把 miyoo_src 的模拟器迁到 RK3576 的步骤
+
+本文只定顺序和每一步的验收。确认这份文档合理之后，再按里面的顺序改代码。一次只做一个模拟器，在板上看到结果再做下一个。
+
+两个目录分开：
+
+- 上游只读：`/home/yuwei/samba/yuwei_work/project/miyoo_src`。这里保持论坛上的原样，不在里面改编译器，也不把整棵树拷进本仓库。`jinyong` 一类目录带了大量游戏数据。
+- 本仓库：`/home/yuwei/samba/yuwei_work/project/linux_console_emu`。开始某个模拟器时，只把它的源码目录从上游拷进来，然后在这里改、编译、记录结果。
+
+已经定下的范围：
+
+- 第一台机器是 RK3576，用户态是 aarch64 Linux（glibc）。
+- 先迁模拟器并在板上验证。汇总配置文件和 LVGL 选单放在模拟器能跑起来之后。
+- 以后再为 32 位 ARM 单独编一套。配置文件和界面源码两边共用，可执行文件按架构各编各的。
+- 老 Miyoo 的 `/opt/miyoo`、`arm926ej-s`、`/dev/miyoo_fb0`、`/dev/miyoo_vir`、`/dev/mem` 不带到 RK3576 上。
+
+「ARM 都能用」在这里的意思是：同一份源码能为目标板的 gcc 编过，显示和按键走 SDL，不访问 Miyoo 私有设备。有 aarch64 汇编就用；这棵旧树里没有的，就用 C 解释器。不把 ARM926 的汇编原样套到 RK3576 上。
+
+## 板上怎么跑
+
+RK3576 的系统库是 glibc。这些源码现在链的是 uClibc，所以 Miyoo 上编出来的程序不能直接拷过来。
+
+建议运行时保持模拟器里的 SDL 1.2 调用，板上安装 `sdl12-compat`，由它接到系统现有的 SDL2 / 显示服务。这样第一批移植只改编译器和去掉 Miyoo 设备节点，不把每个模拟器改成 SDL2。
+
+编译在 RK3576 板上用系统自带的 `gcc` 做。板上还没有编译器时，再用 PC 上的 `aarch64-linux-gnu-gcc` 配这块板的 sysroot。两条路都不再使用 `/opt/miyoo/bin/arm-linux-gcc`。
+
+## 这几步先不做
+
+- `overclock`、`aclk_list`、`cclk_list`、`vclk_list`、`motor`、`calib`、`daemon`、`show_cpu`。它们读写 Miyoo 的时钟、framebuffer 和振动节点。
+- `gmenunx`、`commander`、`gmu`、`flite`、`mpg123`、`libmikmod`、`libvorbis`。菜单以后由 LVGL 替换，播放器和音频库不是模拟器。
+- `jinyong` 目录有 664MB 游戏数据，等对应程序能编过再碰数据。
+- 第一版不要求满速，也不要求手柄映射和原掌机完全一致。先做到能进游戏画面、方向和两个确认键能用。
+
+## 每个模拟器都按这 6 步做
+
+1. 从 `miyoo_src/<目录>` 拷到本仓库同名目录。记下它现在的编译命令，以及写死的 `arm-linux-gcc`、`-march=armv5te`、`-mtune=arm926ej-s`、`/opt/miyoo`。
+2. 改成板上的 `gcc` 或 `aarch64-linux-gnu-gcc`，去掉上面这些标志。源文件里如果打开 `/dev/miyoo_*` 或 `/dev/mem`，改成 SDL 的画面、键盘和音频。
+3. 在编译机上编过，确认生成的是 aarch64 程序（`file` 能看到 `ARM aarch64`）。
+4. 拷到 RK3576，用一份你自己的 ROM 启动到标题或第一个画面。BIOS 类模拟器同时放上它要求的 BIOS。
+5. 在文末的状态表写结果：通过、编译失败、或能开不能玩，并写上一句原因。
+6. 停下来看这一条结果，再开始下一个目录。
+
+ROM 和 BIOS 不放进这个仓库。`.gitignore` 已经忽略 `roms/` 和 `bios/`。
+
+## 模拟器分三批
+
+绑定情况是对着 `miyoo_src` 扫出来的。`/dev/miyoo` 表示源码直接打开掌机私有设备。`arm926` 表示编译参数锁在 ARM926 上。`dynarec` 表示有动态重编译，这棵树里的实现多半是 32 位 ARM。
+
+### 第一批：C 和 SDL，没有掌机私有设备
+
+这些目录的游戏逻辑可以在 aarch64 上编。主要工作是换编译器、换掉 SDL 的库路径。
+
+| 顺序 | 目录 | 机器 | 先改哪里 |
+|---|---|---|---|
+| 1 | `sms` | Master System | `sms/Makefile` 里的 `arm-linux-gcc` 和 sysroot |
+| 2 | `wqx` | 文曲星 NC1020 | `wqx/Makefile` |
+| 3 | `fceux` | 红白机 | `fceux/Makefile` 第 222 行的 `-march=armv5te -mtune=arm926ej-s` |
+| 4 | `gamebatte` | Game Boy / GBC | `gamebatte/build_miyoo.sh`，改成普通 SDL 构建 |
+| 5 | `ohboy` | Game Boy / GBC | 前端是 SDL。目录里有 3 个汇编文件，编不过就先关掉这 3 个文件 |
+| 6 | `gngeo` | Neo Geo | 目录里有 8 个汇编文件。先看它们是不是 x86；是的话 aarch64 用 C 路径 |
+
+`sms` 放第一个，是因为它小，而且能把「拷源码、编译、拷到板子、进画面、记一笔」整条路走通。后面的都复用这条路。
+
+### 第二批：带 32 位 ARM 加速，先走 C 路径
+
+| 顺序 | 目录 | 机器 | 做法 |
+|---|---|---|---|
+| 7 | `snes9x4d` | 超任 | `dingux-sdl/Makefile` 换成普通 SDL。ARM 汇编编不过就用 C 核心 |
+| 8 | `temper` | PC Engine | `temper/SDL/Makefile`。12 个汇编文件按同样办法处理 |
+| 9 | `picodrive` | Mega Drive | 这棵树的 68000 快核是 Cyclone，只在 `__arm__` 下编译。aarch64 用已有的 C 解释器，`./configure` 不再传 `--platform=miyoo` |
+| 10 | `dosbox` | DOS | 按 `README-MIYOO.txt` 的开关重配：`--host` 改成 aarch64，去掉 `-march=armv5te -mtune=arm926ej-s`。动态重编译在这棵树里没有 aarch64 后端时用解释核 |
+
+### 第三批：动态重编译和 Miyoo 设备缠在一起
+
+| 顺序 | 目录 | 机器 | 做法 |
+|---|---|---|---|
+| 11 | `gpsp` | GBA | `gpsp/main.c` 打开了 `/dev/miyoo_vir`。先去掉振动，保留 SDL。7 个汇编是 32 位 ARM 动态重编译，aarch64 上先用 C 核，速度不够再单独做 |
+| 12 | `pcsx_rearmed` | PlayStation | 不要用 `--platform=miyoo`。`configure` 的默认平台是 `generic`，会走 SDL。`aarch64` 匹配不到 `arm*`，脚本会把动态重编译关掉，第一版用解释器加软件 GPU（`unai` 或 `peops`）。`frontend/plat_suniv.c` 整文件不参与这次构建 |
+
+`pcsx_rearmed/include/arm_features.h` 里有空的 `__aarch64__` 分支，说明作者知道这个架构，但这份 `configure` 还没有把 aarch64 接进动态重编译。所以 PS1 能先跑起来，满速是后面的单独任务。
+
+### 游戏移植，单独排期
+
+模拟器三批都有结论之后，再按同样的 6 步做这些纯 C / SDL 移植：`ccdoom`、`wolf3d`、`hheretic`、`hhexen`、`rott`、`eduke32`、`openbor`、`sdlpal`、`cdogs`、`digger`、`liero`、`pang`、`mrdrillux`、`asciiportal`、`snowman`、`tombstone`。它们不是模拟器，不插进上面的顺序里。
+
+## 汇总配置
+
+模拟器状态表里至少有 3 个「通过」之后再写配置，避免格式被还没跑通的程序带着走。
+
+文件放在 `launcher/emulators.conf`。用简单的段格式，方便以后 LVGL 和脚本一起读：
+
+```
+[sms]
+name=Master System
+binary=sms
+rom_dir=roms/sms
+rom_ext=sms,gg
+args={rom}
+workdir=.
+
+[fceux]
+name=NES
+binary=fceux
+rom_dir=roms/nes
+rom_ext=nes,fds
+args={rom}
+workdir=.
+```
+
+每段只描述一件事：界面上的名字、可执行文件、ROM 目录、扩展名、启动参数。画面分辨率和按键不写进第一版，沿用该模拟器自己的 SDL 默认值。换板子时只改 `binary` 和 `rom_dir` 这类路径，段名保持不变。
+
+## LVGL 选单
+
+配置文件有 3 个能启动的条目之后再做界面。程序是一个独立的小可执行文件，不链进任何一个模拟器。
+
+它做三件事：
+
+1. 读 `launcher/emulators.conf`，在 320×240 或板上实际分辨率上列出 `name`。
+2. 选中一项后，用该段的 `binary`、`args`、`workdir` 启动，并把 `{rom}` 换成用户选的 ROM。
+3. 模拟器进程退出后回到列表。
+
+显示用 LVGL 的 SDL 驱动，这样和模拟器一样走板上的 SDL，不单独写 DRM。按键沿用模拟器已经验证过的方向键和确认键。
+
+## 状态表
+
+每做完一个目录就填一行。结果只用这四个词：未开始、编译失败、能开不能玩、通过。
+
+| 目录 | 批次 | 结果 | 说明 |
+|---|---|---|---|
+| sms | 1 | 未开始 | |
+| wqx | 1 | 未开始 | |
+| fceux | 1 | 未开始 | |
+| gamebatte | 1 | 未开始 | |
+| ohboy | 1 | 未开始 | |
+| gngeo | 1 | 未开始 | |
+| snes9x4d | 2 | 未开始 | |
+| temper | 2 | 未开始 | |
+| picodrive | 2 | 未开始 | |
+| dosbox | 2 | 未开始 | |
+| gpsp | 3 | 未开始 | |
+| pcsx_rearmed | 3 | 未开始 | |
+
+## 动手前要你点头的两件事
+
+1. 第一批保持 SDL 1.2 源码，板上用 `sdl12-compat`。
+2. 优先在 RK3576 板上编译；板上没有编译器时，再改用 PC 交叉编译。
+
+这两条可以改。改完再从 `sms` 开始做第 1 步。

@@ -1,0 +1,8 @@
+roms/
+bios/
+*.o
+*.a
+*.so
+*.dge
+build/
+out/
