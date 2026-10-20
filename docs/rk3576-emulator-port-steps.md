@@ -20,7 +20,7 @@
 
 RK3576 的系统库是 glibc。这些源码现在链的是 uClibc，所以 Miyoo 上编出来的程序不能直接拷过来。
 
-建议运行时保持模拟器里的 SDL 1.2 调用，板上安装 `sdl12-compat`，由它接到系统现有的 SDL2 / 显示服务。这样第一批移植只改编译器和去掉 Miyoo 设备节点，不把每个模拟器改成 SDL2。
+依赖库在本仓库的 `third_party/` 里交叉编译，安装到 `deps/`，模拟器静态链接这些 `.a`。`libc`、`libpthread`、`libm`、`libdl` 继续动态链接板上的 glibc。第一版显示用 SDL 1.2 的 framebuffer（`/dev/fb0`），不接 Mali GPU，也不用 Buildroot。
 
 编译在 PC 上做，用 Purple Pi OH2 SDK 里的 aarch64 Linux 工具链，见下一节。不再使用 `/opt/miyoo/bin/arm-linux-gcc`。
 
@@ -48,7 +48,6 @@ rk3576_purple_pi_oh2_linux_sdk/prebuilts/gcc/linux-x86/aarch64/gcc-arm-10.3-2021
 - `-dumpmachine` 是 `aarch64-none-linux-gnu`。
 - 用它编译的 hello 是 `ELF 64-bit LSB executable, ARM aarch64`，动态链接器是 `/lib/ld-linux-aarch64.so.1`。
 - sysroot 里的 C 库是 glibc 2.33（`libc-2.33.so`）。
-- sysroot 里没有 `libSDL`。模拟器还要单独准备 SDL 头文件和库，这一步还没做。
 - 本机没有 `qemu-aarch64`，hello 还没有在 RK3576 板上跑过。
 
 同一天用 CMake 又编过一次，产物同样是 `ARM aarch64`。入口是 `./build.sh`，它会带上默认的 `aarch64-none-linux-gnu` 工具链并调用 CMake。换工具链时设置 `TOOLCHAIN_ROOT`。`./build.sh clean` 删除 `build/`，`./build.sh help` 打印用法。
@@ -61,12 +60,19 @@ rk3576_purple_pi_oh2_linux_sdk/prebuilts/gcc/linux-x86/aarch64/gcc-arm-10.3-2021
 build.sh
 CMakeLists.txt
 cmake/toolchain-aarch64-linux.cmake
+third_party/build-sdl.sh
 apps/hello/
+apps/sdl_fb/
+deps/                 编译产物，不进仓库
 ```
 
-顶层 `CMakeLists.txt` 只负责把 `apps/` 里的程序加进来。`./build.sh` 把工具链路径传给 `cmake/toolchain-aarch64-linux.cmake`。默认路径是上一节那套 `aarch64-none-linux-gnu-gcc`，换机器时设置环境变量 `TOOLCHAIN_ROOT`。
+`./build.sh` 先用 `third_party/build-sdl.sh` 把 SDL 1.2.15 编成 `deps/lib/libSDL.a`，再编 `apps/`。源码包缓存在 `third_party/cache/`，也不进仓库。`./build.sh clean` 会删掉 `build/`、`deps/` 和 `third_party/src/`。
 
-以后每个模拟器放在 `apps/<目录>`，并在顶层 `CMakeLists.txt` 里 `add_subdirectory`。`apps/hello` 只用来确认这条编译链路，不带 SDL。
+SDL 只打开 framebuffer 和 dummy 视频，声音只留 OSS 和 dummy。驱动编进静态库，配置里关了 `--disable-sdl-dlopen`，运行时不去加载别的 `.so`。
+
+`apps/sdl_fb` 用来确认能静态链上 SDL，并调用 `SDL_SetVideoMode(320, 240, 16)`。它要在有 `/dev/fb0` 的板上才能出画面。`apps/hello` 不链 SDL。
+
+以后每个模拟器放在 `apps/<目录>`，并在顶层 `CMakeLists.txt` 里 `add_subdirectory`。链接时使用 `deps/lib/libSDL.a`。
 
 后面每个模拟器都用这支 `aarch64-none-linux-gnu-gcc` 编。`file` 看到 `ARM aarch64` 才算编译这步通过。
 
@@ -190,8 +196,8 @@ workdir=.
 
 在 PC 上用 SDK 里的 `aarch64-none-linux-gnu-gcc` 交叉编译。工具链本身已经验证，见「交叉编译器」。
 
-## 下一步之前还要定的一件事
+## 已经定下的库
 
-第一批保持 SDL 1.2 源码，板上用 `sdl12-compat`。这套 sysroot 里没有 SDL，所以 `sms` 之前要先决定 SDL 头文件和库从哪来：打进这个 sysroot，或者指向板上 rootfs 里的 SDL。
+SDL 1.2.15 放在本仓库编译，静态链接，显示走 framebuffer。GPU 这批不用。zlib、libpng、SDL_image 等库等第一个用到它们的模拟器再加。
 
-这件事定了再从 `sms` 开始。
+下一步从 `sms` 开始，把它拷进 `apps/sms`，改成这套工具链和 `libSDL.a`。

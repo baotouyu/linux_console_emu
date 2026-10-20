@@ -6,3 +6,6 @@ bios/
 *.dge
 build/
 out/
+deps/
+third_party/src/
+third_party/cache/

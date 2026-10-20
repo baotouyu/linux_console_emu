@@ -12,8 +12,8 @@ usage() {
 Usage: ./build.sh [command]
 
 Commands:
-  build    Configure the aarch64 toolchain and compile (default)
-  clean    Remove the build directory
+  build    Build static SDL, then compile the apps (default)
+  clean    Remove build/, deps/, and third_party/src/
   help     Show this help
 
 Environment:
@@ -29,6 +29,7 @@ build() {
         exit 1
     fi
     echo "toolchain: $TOOLCHAIN_ROOT"
+    TOOLCHAIN_ROOT="$TOOLCHAIN_ROOT" "$ROOT/third_party/build-sdl.sh"
     cmake -S "$ROOT" -B "$BUILD_DIR" \
         -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN_FILE" \
         -DTOOLCHAIN_ROOT="$TOOLCHAIN_ROOT"
@@ -40,8 +41,8 @@ case "${1:-build}" in
         build
         ;;
     clean)
-        rm -rf "$BUILD_DIR"
-        echo "removed $BUILD_DIR"
+        rm -rf "$BUILD_DIR" "$ROOT/deps" "$ROOT/third_party/src"
+        echo "removed $BUILD_DIR $ROOT/deps $ROOT/third_party/src"
         ;;
     help|-h|--help)
         usage
