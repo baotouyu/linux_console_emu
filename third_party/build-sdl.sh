@@ -18,7 +18,9 @@ if [[ ! -x "$GCC" ]]; then
     exit 1
 fi
 
-if [[ -f "$PREFIX/lib/libSDL.a" ]]; then
+if [[ -f "$PREFIX/lib/libSDL.a" \
+    && "$PREFIX/lib/libSDL.a" -nt "$ROOT/third_party/sdl-drm/SDL_drmvideo.c" \
+    && "$PREFIX/lib/libSDL.a" -nt "$ROOT/third_party/build-sdl.sh" ]]; then
     echo "libSDL.a already built: $PREFIX/lib/libSDL.a"
     exit 0
 fi
@@ -76,6 +78,56 @@ cd "$SRC"
     --enable-dummyaudio \
     --disable-input-tslib
 
+mkdir -p "$SRC/src/video/drm"
+cp "$ROOT/third_party/sdl-drm/SDL_drmvideo.c" "$SRC/src/video/drm/SDL_drmvideo.c"
+python3 - "$SRC" <<'PY'
+import pathlib, sys
+src = pathlib.Path(sys.argv[1])
+
+video = (src / "src/video/SDL_video.c").read_text()
+needle = "#if SDL_VIDEO_DRIVER_FBCON\n\t&FBCON_bootstrap,\n#endif\n"
+insert = needle + "#if SDL_VIDEO_DRIVER_DRM\n\t&DRM_bootstrap,\n#endif\n"
+if needle not in video:
+    raise SystemExit("FBCON bootstrap not found")
+if "DRM_bootstrap" not in video:
+    video = video.replace(needle, insert, 1)
+    (src / "src/video/SDL_video.c").write_text(video)
+
+sysvideo = (src / "src/video/SDL_sysvideo.h").read_text()
+needle = "#if SDL_VIDEO_DRIVER_FBCON\nextern VideoBootStrap FBCON_bootstrap;\n#endif\n"
+insert = needle + "#if SDL_VIDEO_DRIVER_DRM\nextern VideoBootStrap DRM_bootstrap;\n#endif\n"
+if needle not in sysvideo:
+    raise SystemExit("FBCON extern not found")
+if "DRM_bootstrap" not in sysvideo:
+    sysvideo = sysvideo.replace(needle, insert, 1)
+    (src / "src/video/SDL_sysvideo.h").write_text(sysvideo)
+
+config = src / "include/SDL_config.h"
+text = config.read_text()
+if "SDL_VIDEO_DRIVER_DRM" not in text:
+    text = text.replace(
+        "#define SDL_VIDEO_DRIVER_FBCON 1\n",
+        "#define SDL_VIDEO_DRIVER_FBCON 1\n#define SDL_VIDEO_DRIVER_DRM 1\n",
+        1,
+    )
+    config.write_text(text)
+
+makefile = src / "Makefile"
+make = makefile.read_text()
+make = make.replace(
+    "./src/video/fbcon/*.c",
+    "./src/video/fbcon/*.c ./src/video/drm/SDL_drmvideo.c",
+    1,
+)
+make = make.replace(
+    "$(objects)/SDL_fbvideo.lo",
+    "$(objects)/SDL_fbvideo.lo $(objects)/SDL_drmvideo.lo",
+    1,
+)
+makefile.write_text(make)
+PY
+
+make depend
 make -j"$(nproc)"
 make install
 echo "installed $PREFIX/lib/libSDL.a"

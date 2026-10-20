@@ -68,9 +68,9 @@ deps/                 编译产物，不进仓库
 
 `./build.sh` 先用 `third_party/build-sdl.sh` 把 SDL 1.2.15 编成 `deps/lib/libSDL.a`，再编 `apps/`。源码包缓存在 `third_party/cache/`，也不进仓库。`./build.sh clean` 会删掉 `build/`、`deps/` 和 `third_party/src/`。
 
-SDL 只打开 framebuffer 和 dummy 视频，声音只留 OSS 和 dummy。驱动编进静态库，配置里关了 `--disable-sdl-dlopen`，运行时不去加载别的 `.so`。
+显示先试 `/dev/fb0`。打不开再试 `/dev/dri/card0`，用 DRM dumb buffer 把 SDL 画面放大到屏幕分辨率。两个设备都没有时，`SDL_Init` 失败，程序退出。不使用 Mali。`third_party/sdl-drm/SDL_drmvideo.c` 在编译 SDL 时打进静态库。
 
-`apps/sdl_fb` 用来确认能静态链上 SDL，并调用 `SDL_SetVideoMode(320, 240, 16)`。它要在有 `/dev/fb0` 的板上才能出画面。`apps/hello` 不链 SDL。
+`apps/sdl_fb` 把 320×240 的表面涂成绿色并保持 5 秒。板上成功时打印 `sdl driver drm` 或 `sdl driver fbcon`。`apps/hello` 不链 SDL。
 
 以后每个模拟器放在 `apps/<目录>`，并在顶层 `CMakeLists.txt` 里 `add_subdirectory`。链接时使用 `deps/lib/libSDL.a`。
 
